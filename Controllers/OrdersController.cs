@@ -28,9 +28,9 @@ namespace INATEL_T141_DM106_Final_Homework.Controllers
         }
 
         // GET: api/Orders
-        [ResponseType(typeof(Order))]
         [HttpGet]
         [Route("ByEmail")]
+        [ResponseType(typeof(Order))]
         public List<Order> GetOrdersByEmail(string email)
         {
             List<Order> orders = db.Orders.Where(order => order.UserEmail == User.Identity.Name).ToList();
@@ -44,6 +44,7 @@ namespace INATEL_T141_DM106_Final_Homework.Controllers
 
         // GET: api/Orders/5
         [ResponseType(typeof(Order))]
+        [Route("api/Orders/{id}", Name = "GetOrderById")]
         public IHttpActionResult GetOrder(int id)
         {
             Order order = db.Orders.Find(id);
@@ -62,9 +63,9 @@ namespace INATEL_T141_DM106_Final_Homework.Controllers
         }
 
         // PUT: api/Orders/5
-        [ResponseType(typeof(void))]
         [HttpPut]
         [Route("CalculateShipPrice")]
+        [ResponseType(typeof(void))]
         public IHttpActionResult PutCalculateShipPrice(int id)
         {
             Order order = db.Orders
@@ -161,7 +162,7 @@ namespace INATEL_T141_DM106_Final_Homework.Controllers
             shipper.Erro = "0";
             shipper.MsgErro = "";
             shipper.PriceShip = Convert.ToDecimal(resultado.Servicos[0].Valor);
-            shipper.DeliveryDate = DateTime.Now.AddDays(Convert.ToInt32(resultado.Servicos[0].PrazoEntrega));
+            shipper.DeliveryDate = DateTime.Now.AddDays(Convert.ToInt32(resultado.Servicos[0].PrazoEntrega)).Date;
 
             return shipper;
         }
@@ -222,9 +223,9 @@ namespace INATEL_T141_DM106_Final_Homework.Controllers
         }
 
         // PUT: api/Orders/5
-        [ResponseType(typeof(void))]
         [HttpPut]
         [Route("CloseOrder")]
+        [ResponseType(typeof(void))]
         public IHttpActionResult PutCloseOrder(int id)
         {
 
@@ -306,43 +307,46 @@ namespace INATEL_T141_DM106_Final_Homework.Controllers
         }
 
         // POST: api/Orders
-        [ResponseType(typeof(Order))]
         [HttpPost]
         [Route("CreateOrder")]
+        [ResponseType(typeof(Order))]
         public IHttpActionResult PostCreateOrder(Order order)
         {
-            foreach (ProductOrder productOrder in order.ProductOrders)
-            {
-                productOrder.Product = db.Products.Find(productOrder.ProductId);
-            }
 
-            /*
             if (!ModelState.IsValid)
             {
                 return BadRequest(ModelState);
             }
-            */
 
             order.Status = Status_New;
             order.TotalWeight = 0;
             order.PriceShip = 0;
             order.TotalPrice = 0;
-            order.Date = DateTime.Now;
+            order.Date = DateTime.Now.Date;
+            order.DeliveryDate = DateTime.Now.AddDays(30).Date;
 
-            db.Orders.Add(order);
-            db.SaveChanges();
+           db.Orders.Add(order);
+           db.SaveChanges();
 
-            return CreatedAtRoute("DefaultApi", new { id = order.Id }, order);
+            //return CreatedAtRoute("DefaultApi", new { id = order.Id }, order);
+            return CreatedAtRoute("GetOrderById", new { id = order.Id }, order);
         }
 
         // POST: api/Orders
         [ResponseType(typeof(Order))]
-        private IHttpActionResult PostOrder(Order order)
+        public IHttpActionResult PostOrder(Order order)
         {
             if (!ModelState.IsValid)
             {
                 return BadRequest(ModelState);
             }
+
+            order.Status = Status_New;
+            order.TotalWeight = 0;
+            order.PriceShip = 0;
+            order.TotalPrice = 0;
+            order.Date = DateTime.Now.Date;
+            order.DeliveryDate = DateTime.Now.AddDays(30).Date;
 
             db.Orders.Add(order);
             db.SaveChanges();

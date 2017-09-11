@@ -13,6 +13,7 @@ using INATEL_T141_DM106_Final_Homework.Models;
 namespace INATEL_T141_DM106_Final_Homework.Controllers
 {
     [Authorize]
+    [RoutePrefix("api/Products")]
     public class ProductsController : ApiController
     {
         private INATEL_T141_DM106_Final_HomeworkContext db = new INATEL_T141_DM106_Final_HomeworkContext();
