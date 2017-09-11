@@ -25,7 +25,7 @@ namespace INATEL_T141_DM106_Final_Homework.Controllers
         public List<Order> GetOrders()
         {
             //return db.Orders;
-            return db.Orders.Include(order => order.ProductOrders).ToList();
+           return db.Orders.Include(order => order.ProductOrders).ToList();
         }
 
         // GET: api/Orders
@@ -48,14 +48,15 @@ namespace INATEL_T141_DM106_Final_Homework.Controllers
         [Route("api/Orders/{id}", Name = "GetOrderById")]
         public IHttpActionResult GetOrder(int id)
         {
-            Order order = db.Orders.Find(id);
+            //Order order = db.Orders.Find(id);
+            Order order = db.Orders.Where(o => o.Id == id).First();
             if (order == null)
             {
                 return Content(HttpStatusCode.NotFound, "Order Not Found.");
                 //return NotFound();
             }
 
-            if (User.IsInRole("USER") && order.UserEmail == User.Identity.Name)
+            if (User.IsInRole("USER") && order.UserEmail != User.Identity.Name)
             {
                 return Content(HttpStatusCode.Forbidden, "User not authorized to see this order");
             }
@@ -80,7 +81,7 @@ namespace INATEL_T141_DM106_Final_Homework.Controllers
                 //return NotFound();
             }
 
-            if (User.IsInRole("USER") && order.UserEmail == User.Identity.Name)
+            if (User.IsInRole("USER") && order.UserEmail != User.Identity.Name)
             {
                 return Content(HttpStatusCode.Forbidden, "User not authorized to Calculate Ship Price for this order");
             }
@@ -247,7 +248,7 @@ namespace INATEL_T141_DM106_Final_Homework.Controllers
                 return BadRequest("Invalid Status");
             }
 
-            if (User.IsInRole("USER") && order.UserEmail == User.Identity.Name)
+            if (User.IsInRole("USER") && order.UserEmail != User.Identity.Name)
             {
                 return Content(HttpStatusCode.Forbidden, "User not authorized to close this order");
             }
@@ -279,6 +280,11 @@ namespace INATEL_T141_DM106_Final_Homework.Controllers
             if (id != order.Id)
             {
                 return BadRequest();
+            }
+
+            if (User.IsInRole("USER") && order.UserEmail != User.Identity.Name)
+            {
+                return Content(HttpStatusCode.Forbidden, "User not authorized change this order");
             }
 
             if (!order.Status.Equals(Status_New) || !order.Status.Equals(Status_Closed) || !order.Status.Equals(Status_Cancel) || !order.Status.Equals(Status_Delivered))
@@ -314,6 +320,11 @@ namespace INATEL_T141_DM106_Final_Homework.Controllers
         public IHttpActionResult PostCreateOrder(Order order)
         {
 
+            if (User.IsInRole("USER") && order.UserEmail != User.Identity.Name)
+            {
+                return Content(HttpStatusCode.Forbidden, "User not authorized to create this order");
+            }
+
             foreach (ProductOrder productOrder in order.ProductOrders)
             {
                 productOrder.Product = db.Products.Find(productOrder.ProductId);
@@ -342,6 +353,12 @@ namespace INATEL_T141_DM106_Final_Homework.Controllers
         [ResponseType(typeof(Order))]
         public IHttpActionResult PostOrder(Order order)
         {
+
+            if (User.IsInRole("USER") && order.UserEmail != User.Identity.Name)
+            {
+                return Content(HttpStatusCode.Forbidden, "User not authorized to create this order");
+            }
+
             if (!ModelState.IsValid)
             {
                 return BadRequest(ModelState);
@@ -371,7 +388,7 @@ namespace INATEL_T141_DM106_Final_Homework.Controllers
                 //return NotFound();
             }
 
-            if (User.IsInRole("USER") && order.UserEmail == User.Identity.Name)
+            if (User.IsInRole("USER") && order.UserEmail != User.Identity.Name)
             {
                 return Content(HttpStatusCode.Forbidden, "User not authorized to delete this order");
             }
