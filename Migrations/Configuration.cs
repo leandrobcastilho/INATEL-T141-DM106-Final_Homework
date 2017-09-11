@@ -28,6 +28,7 @@ namespace INATEL_T141_DM106_Final_Homework.Migrations
             //    );
             //
 
+            /*
             context.Products.AddOrUpdate(
                 p => p.Id,
                 new Product
@@ -79,7 +80,7 @@ namespace INATEL_T141_DM106_Final_Homework.Migrations
                 }
 
             );
-
+            */
         }
     }
 }

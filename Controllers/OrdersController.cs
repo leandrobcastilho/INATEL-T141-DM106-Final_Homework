@@ -22,9 +22,10 @@ namespace INATEL_T141_DM106_Final_Homework.Controllers
 
         // GET: api/Orders
         [Authorize(Roles = "ADMIN")]
-        public IQueryable<Order> GetOrders()
+        public List<Order> GetOrders()
         {
-            return db.Orders;
+            //return db.Orders;
+            return db.Orders.Include(order => order.ProductOrders).ToList();
         }
 
         // GET: api/Orders
@@ -84,7 +85,7 @@ namespace INATEL_T141_DM106_Final_Homework.Controllers
                 return Content(HttpStatusCode.Forbidden, "User not authorized to Calculate Ship Price for this order");
             }
 
-            if (order.Status.Equals(Status_New))
+            if (!order.Status.Equals(Status_New))
             {
                 return BadRequest("The order status is different of new");
 
@@ -312,6 +313,11 @@ namespace INATEL_T141_DM106_Final_Homework.Controllers
         [ResponseType(typeof(Order))]
         public IHttpActionResult PostCreateOrder(Order order)
         {
+
+            foreach (ProductOrder productOrder in order.ProductOrders)
+            {
+                productOrder.Product = db.Products.Find(productOrder.ProductId);
+            }
 
             if (!ModelState.IsValid)
             {
