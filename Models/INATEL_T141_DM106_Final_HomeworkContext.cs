@@ -20,5 +20,7 @@ namespace INATEL_T141_DM106_Final_Homework.Models
         }
 
         public System.Data.Entity.DbSet<INATEL_T141_DM106_Final_Homework.Models.Product> Products { get; set; }
+
+        public System.Data.Entity.DbSet<INATEL_T141_DM106_Final_Homework.Models.Order> Orders { get; set; }
     }
 }
