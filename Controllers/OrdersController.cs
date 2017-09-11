@@ -48,8 +48,8 @@ namespace INATEL_T141_DM106_Final_Homework.Controllers
         [Route("api/Orders/{id}", Name = "GetOrderById")]
         public IHttpActionResult GetOrder(int id)
         {
-            //Order order = db.Orders.Find(id);
-            Order order = db.Orders.Where(o => o.Id == id).First();
+            Order order = db.Orders.Find(id);
+            //Order order = db.Orders.Where(o => o.Id == id).Include(o => o.ProductOrders).First();
             if (order == null)
             {
                 return Content(HttpStatusCode.NotFound, "Order Not Found.");
@@ -70,10 +70,8 @@ namespace INATEL_T141_DM106_Final_Homework.Controllers
         [ResponseType(typeof(void))]
         public IHttpActionResult PutCalculateShipPrice(int id)
         {
-            Order order = db.Orders
-                //.Include(o =>o.ProductOrders)
-                //.ThenInclude(po => po.Product)
-                .Find(id);
+            //Order order = db.Orders.Find(id);
+            Order order = db.Orders.Where(o => o.Id == id).Include(o => o.ProductOrders).First();
 
             if (order == null)
             {
@@ -97,7 +95,12 @@ namespace INATEL_T141_DM106_Final_Homework.Controllers
                 return BadRequest("CEP not registered");
             }
 
-            List<Product> allProducts = GetListProduct(order);
+            List<Product> allProducts = new List<Product>();
+            foreach (ProductOrder productOrder in order.ProductOrders)
+            {
+                Product product = db.Products.Find(productOrder.ProductId);
+                allProducts.Add(product);
+            }
             if (allProducts.Count == 0)
             {
                 return BadRequest("Order is empty");
@@ -119,7 +122,26 @@ namespace INATEL_T141_DM106_Final_Homework.Controllers
             order.TotalPrice = Convert.ToDecimal(productResult.Price) + priceShip;
             order.TotalWeight = Convert.ToDecimal(productResult.Weight);
 
-            return PutOrder(id, order);
+            db.Entry(order).State = EntityState.Modified;
+
+            try
+            {
+                db.SaveChanges();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                if (!OrderExists(id))
+                {
+                    return Content(HttpStatusCode.NotFound, "Order Not Found.");
+                }
+                else
+                {
+                    throw;
+                }
+            }
+
+            return StatusCode(HttpStatusCode.NoContent);
+            //return PutOrder(id, order);
         }
 
         private Shipper CalculateShipper(string customerZipCode, Product productResult)
@@ -212,18 +234,6 @@ namespace INATEL_T141_DM106_Final_Homework.Controllers
             return productResult;
         }
 
-        private static List<Product> GetListProduct(Order order)
-        {
-            List<Product> allProducts = new List<Product>();
-            foreach (ProductOrder productOrder in order.ProductOrders)
-            {
-                Product product = productOrder.Product;
-                allProducts.Add(product);
-            }
-
-            return allProducts;
-        }
-
         // PUT: api/Orders/5
         [HttpPut]
         [Route("CloseOrder")]
@@ -260,7 +270,26 @@ namespace INATEL_T141_DM106_Final_Homework.Controllers
 
             order.Status = Status_Closed;
 
-            return PutOrder(id, order);
+            db.Entry(order).State = EntityState.Modified;
+
+            try
+            {
+                db.SaveChanges();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                if (!OrderExists(id))
+                {
+                    return Content(HttpStatusCode.NotFound, "Order Not Found.");
+                }
+                else
+                {
+                    throw;
+                }
+            }
+
+            return StatusCode(HttpStatusCode.NoContent);
+            //return PutOrder(id, order);
         }
 
         public static string Status_New = "New";
@@ -287,7 +316,7 @@ namespace INATEL_T141_DM106_Final_Homework.Controllers
                 return Content(HttpStatusCode.Forbidden, "User not authorized change this order");
             }
 
-            if (!order.Status.Equals(Status_New) || !order.Status.Equals(Status_Closed) || !order.Status.Equals(Status_Cancel) || !order.Status.Equals(Status_Delivered))
+            if (!order.Status.Equals(Status_New) && !order.Status.Equals(Status_Closed) && !order.Status.Equals(Status_Cancel) && !order.Status.Equals(Status_Delivered))
             {
                 return BadRequest("Invalid Status");
             }

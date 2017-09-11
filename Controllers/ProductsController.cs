@@ -19,9 +19,10 @@ namespace INATEL_T141_DM106_Final_Homework.Controllers
         private INATEL_T141_DM106_Final_HomeworkContext db = new INATEL_T141_DM106_Final_HomeworkContext();
 
         // GET: api/Products
-        public IQueryable<Product> GetProducts()
+        public List<Product> GetProducts()
         {
-            return db.Products;
+            //return db.Orders;
+            return db.Products.ToList();
         }
 
         // GET: api/Products/5
