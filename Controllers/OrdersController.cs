@@ -9,17 +9,37 @@ using System.Net.Http;
 using System.Web.Http;
 using System.Web.Http.Description;
 using INATEL_T141_DM106_Final_Homework.Models;
+using INATEL_T141_DM106_Final_Homework.CRMClient;
+using INATEL_T141_DM106_Final_Homework.br.com.correios.ws;
 
 namespace INATEL_T141_DM106_Final_Homework.Controllers
 {
+    [Authorize]
+    [RoutePrefix("api/Orders")]
     public class OrdersController : ApiController
     {
         private INATEL_T141_DM106_Final_HomeworkContext db = new INATEL_T141_DM106_Final_HomeworkContext();
 
         // GET: api/Orders
+        [Authorize(Roles = "ADMIN")]
         public IQueryable<Order> GetOrders()
         {
             return db.Orders;
+        }
+
+        // GET: api/Orders
+        [ResponseType(typeof(Order))]
+        [HttpGet]
+        [Route("ByEmail")]
+        public List<Order> GetOrdersByEmail(string email)
+        {
+            List<Order> orders = db.Orders.Where(order => order.UserEmail == User.Identity.Name).ToList();
+            if (User.IsInRole("USER") && !User.Identity.Name.Equals(email))
+            {
+                throw new HttpResponseException(HttpStatusCode.Forbidden);
+            }
+
+            return orders;
         }
 
         // GET: api/Orders/5
@@ -29,7 +49,13 @@ namespace INATEL_T141_DM106_Final_Homework.Controllers
             Order order = db.Orders.Find(id);
             if (order == null)
             {
-                return NotFound();
+                return Content(HttpStatusCode.NotFound, "Order Not Found.");
+                //return NotFound();
+            }
+
+            if (User.IsInRole("USER") && order.UserEmail == User.Identity.Name)
+            {
+                return Content(HttpStatusCode.Forbidden, "User not authorized to see this order");
             }
 
             return Ok(order);
@@ -37,7 +63,211 @@ namespace INATEL_T141_DM106_Final_Homework.Controllers
 
         // PUT: api/Orders/5
         [ResponseType(typeof(void))]
-        public IHttpActionResult PutOrder(int id, Order order)
+        [HttpPut]
+        [Route("CalculateShipPrice")]
+        public IHttpActionResult PutCalculateShipPrice(int id)
+        {
+            Order order = db.Orders
+                //.Include(o =>o.ProductOrders)
+                //.ThenInclude(po => po.Product)
+                .Find(id);
+
+            if (order == null)
+            {
+                return Content(HttpStatusCode.NotFound, "Order Not Found.");
+                //return NotFound();
+            }
+
+            if (User.IsInRole("USER") && order.UserEmail == User.Identity.Name)
+            {
+                return Content(HttpStatusCode.Forbidden, "User not authorized to Calculate Ship Price for this order");
+            }
+
+            if (order.Status.Equals(Status_New))
+            {
+                return BadRequest("The order status is different of new");
+
+            }
+            string customerZipCode = GetZipCode(order.UserEmail);
+            if (customerZipCode == null)
+            {
+                return BadRequest("CEP not registered");
+            }
+
+            List<Product> allProducts = GetListProduct(order);
+            if (allProducts.Count == 0)
+            {
+                return BadRequest("Order is empty");
+            }
+
+            Product productResult = CalculateProductResult(allProducts);
+
+            Shipper shipper = CalculateShipper(customerZipCode, productResult);
+            if (!shipper.Erro.Equals("0"))
+            {
+                return BadRequest("Código do erro: " + shipper.Erro + "-" + shipper.MsgErro);
+            }
+
+            var priceShip = shipper.PriceShip;
+            DateTime deliveryDate = shipper.DeliveryDate;
+
+            order.PriceShip = priceShip;
+            order.DeliveryDate = deliveryDate;
+            order.TotalPrice = Convert.ToDecimal(productResult.Price) + priceShip;
+            order.TotalWeight = Convert.ToDecimal(productResult.Weight);
+
+            return PutOrder(id, order);
+        }
+
+        private Shipper CalculateShipper(string customerZipCode, Product productResult)
+        {
+            Shipper shipper = new Shipper();
+
+            string nCdEmpresa = "";
+            string sDsSenha = "";
+
+            string ServiceCode_SEDEX_Varejo = "40010";
+            string ServiceCode_SEDEX_a_Cobrar_Varejo = "40045";
+            string ServiceCode_SEDEX_10_Varejo = "40215";
+            string ServiceCode_SEDEX_Hoje_Varejo = "40290";
+            string ServiceCode_PAC_Varejo = "41106";
+
+            string nCdServico = ServiceCode_SEDEX_Varejo;
+
+            string sCepOrigem = "37540000";
+            string sCepDestino = customerZipCode;
+            string nVlPeso = Convert.ToString(productResult.Weight);
+
+            int Format_CaixaPacote = 1;
+            int Format_RoloPrisma = 2;
+
+            int nCdFormato = Format_CaixaPacote;
+
+            decimal nVlComprimento = Convert.ToDecimal(productResult.Length);
+            decimal nVlAltura = Convert.ToDecimal(productResult.Height);
+            decimal nVlLargura = Convert.ToDecimal(productResult.Width);
+            decimal nVlDiametro = Convert.ToDecimal(productResult.Diameter);
+            string sCdMaoPropria = "N";
+            decimal nVlValorDeclarado = Convert.ToDecimal(productResult.Price);
+            string sCdAvisoRecebimento = "S";
+            CalcPrecoPrazoWS correios = new CalcPrecoPrazoWS();
+            cResultado resultado = correios.CalcPrecoPrazo(nCdEmpresa, sDsSenha, nCdServico, sCepOrigem, sCepDestino, nVlPeso, nCdFormato, nVlComprimento, nVlAltura, nVlLargura, nVlDiametro, sCdMaoPropria, nVlValorDeclarado, sCdAvisoRecebimento);
+
+            if (!resultado.Servicos[0].Erro.Equals("0"))
+            {
+                shipper.Erro = resultado.Servicos[0].Erro;
+                shipper.MsgErro = resultado.Servicos[0].MsgErro;
+            }
+            shipper.Erro = "0";
+            shipper.MsgErro = "";
+            shipper.PriceShip = Convert.ToDecimal(resultado.Servicos[0].Valor);
+            shipper.DeliveryDate = DateTime.Now.AddDays(Convert.ToInt32(resultado.Servicos[0].PrazoEntrega));
+
+            return shipper;
+        }
+
+        private string GetZipCode(string userEmail)
+        {
+            string customerZipCode = null;
+            CRMRestClient crmClient = new CRMRestClient();
+            Customer customer = crmClient.GetCustomerByEmail(userEmail);
+            if (customer != null)
+            {
+                customerZipCode = customer.zip;
+            }
+            return customerZipCode;
+        }
+
+        private static Product CalculateProductResult(List<Product> allProducts)
+        {
+            Product productResult = new Product();
+
+            //Preço Total; 
+            productResult.Price = allProducts.Sum(p => p.Price);
+
+            //Peso Total; 
+            productResult.Weight = allProducts.Sum(p => p.Weight);
+
+            //Altura Maxima; 
+            productResult.Height = allProducts.Max(p => p.Height);
+
+            //Somatorio dimencao dos objeos circulres;
+            double dimension = productResult.Diameter = allProducts.Where(p => p.Diameter > 0).Sum(p => p.Diameter);
+
+            //Somatorio Largura objeos nao circulres; 
+            double width = allProducts.Where(p => p.Diameter == 0).Sum(p => p.Width);
+
+            //Somatorio Largura objeos nao circulres; 
+            double length = allProducts.Where(p => p.Diameter == 0).Sum(p => p.Length);
+
+            //Largura Total;
+            productResult.Width = dimension + width;
+
+            //Comprimento Total;
+            productResult.Length = dimension + length;
+
+            return productResult;
+        }
+
+        private static List<Product> GetListProduct(Order order)
+        {
+            List<Product> allProducts = new List<Product>();
+            foreach (ProductOrder productOrder in order.ProductOrders)
+            {
+                Product product = productOrder.Product;
+                allProducts.Add(product);
+            }
+
+            return allProducts;
+        }
+
+        // PUT: api/Orders/5
+        [ResponseType(typeof(void))]
+        [HttpPut]
+        [Route("CloseOrder")]
+        public IHttpActionResult PutCloseOrder(int id)
+        {
+
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            Order order = db.Orders.Find(id);
+            if (order == null)
+            {
+                return Content(HttpStatusCode.NotFound, "Order Not Found.");
+                //return NotFound();
+            }
+
+            if (order.Status.Equals(Status_New) || !order.Status.Equals(Status_Closed) || !order.Status.Equals(Status_Cancel) || !order.Status.Equals(Status_Delivered))
+            {
+                return BadRequest("Invalid Status");
+            }
+
+            if (User.IsInRole("USER") && order.UserEmail == User.Identity.Name)
+            {
+                return Content(HttpStatusCode.Forbidden, "User not authorized to close this order");
+            }
+
+            if (order.PriceShip <= 0)
+            {
+                return BadRequest("Order cannot be closed, ship price not calculated");
+            }
+
+            order.Status = Status_Closed;
+
+            return PutOrder(id, order);
+        }
+
+        public static string Status_New = "New";
+        public static string Status_Closed = "Closed";
+        public static string Status_Cancel = "Cancel";
+        public static string Status_Delivered = "Delivered";
+
+        // PUT: api/Orders/5
+        [ResponseType(typeof(void))]
+        private IHttpActionResult PutOrder(int id, Order order)
         {
             if (!ModelState.IsValid)
             {
@@ -47,6 +277,11 @@ namespace INATEL_T141_DM106_Final_Homework.Controllers
             if (id != order.Id)
             {
                 return BadRequest();
+            }
+
+            if (!order.Status.Equals(Status_New) || !order.Status.Equals(Status_Closed) || !order.Status.Equals(Status_Cancel) || !order.Status.Equals(Status_Delivered))
+            {
+                return BadRequest("Invalid Status");
             }
 
             db.Entry(order).State = EntityState.Modified;
@@ -59,7 +294,7 @@ namespace INATEL_T141_DM106_Final_Homework.Controllers
             {
                 if (!OrderExists(id))
                 {
-                    return NotFound();
+                    return Content(HttpStatusCode.NotFound, "Order Not Found.");
                 }
                 else
                 {
@@ -72,7 +307,37 @@ namespace INATEL_T141_DM106_Final_Homework.Controllers
 
         // POST: api/Orders
         [ResponseType(typeof(Order))]
-        public IHttpActionResult PostOrder(Order order)
+        [HttpPost]
+        [Route("CreateOrder")]
+        public IHttpActionResult PostCreateOrder(Order order)
+        {
+            foreach (ProductOrder productOrder in order.ProductOrders)
+            {
+                productOrder.Product = db.Products.Find(productOrder.ProductId);
+            }
+
+            /*
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+            */
+
+            order.Status = Status_New;
+            order.TotalWeight = 0;
+            order.PriceShip = 0;
+            order.TotalPrice = 0;
+            order.Date = DateTime.Now;
+
+            db.Orders.Add(order);
+            db.SaveChanges();
+
+            return CreatedAtRoute("DefaultApi", new { id = order.Id }, order);
+        }
+
+        // POST: api/Orders
+        [ResponseType(typeof(Order))]
+        private IHttpActionResult PostOrder(Order order)
         {
             if (!ModelState.IsValid)
             {
@@ -92,7 +357,13 @@ namespace INATEL_T141_DM106_Final_Homework.Controllers
             Order order = db.Orders.Find(id);
             if (order == null)
             {
-                return NotFound();
+                return Content(HttpStatusCode.NotFound, "Order Not Found.");
+                //return NotFound();
+            }
+
+            if (User.IsInRole("USER") && order.UserEmail == User.Identity.Name)
+            {
+                return Content(HttpStatusCode.Forbidden, "User not authorized to delete this order");
             }
 
             db.Orders.Remove(order);
