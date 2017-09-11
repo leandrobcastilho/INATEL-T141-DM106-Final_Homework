@@ -319,7 +319,8 @@ namespace INATEL_T141_DM106_Final_Homework.Controllers
         }
 
         // POST api/Account/Register
-        [AllowAnonymous]
+        //[AllowAnonymous]
+        [Authorize(Roles = "ADMIN")]
         [Route("Register")]
         public async Task<IHttpActionResult> Register(RegisterBindingModel model)
         {
@@ -335,6 +336,14 @@ namespace INATEL_T141_DM106_Final_Homework.Controllers
             if (!result.Succeeded)
             {
                 return GetErrorResult(result);
+            }
+            else
+            {
+                var addToRoleResult = await UserManager.AddToRoleAsync(user.Id, "USER");
+                if (!addToRoleResult.Succeeded)
+                {
+                    return GetErrorResult(result);
+                }
             }
 
             return Ok();
